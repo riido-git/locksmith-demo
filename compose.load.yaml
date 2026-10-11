@@ -1,0 +1,61 @@
+# Three instances of the demo, one Redis and one H2 database, for the Gatling load test (see README.md).
+#   ./mvnw -DskipTests package
+#   docker compose -f compose.load.yaml up -d --build --wait
+# The instances answer on 127.0.0.1:18081, 18082 and 18083. Redis and H2 publish no port on the host.
+name: demo-load
+
+x-app: &app
+  build: .
+  image: demo-load-app
+  depends_on:
+    redis:
+      condition: service_healthy
+    h2:
+      condition: service_healthy
+  environment:
+    SPRING_DATA_REDIS_HOST: redis
+    # H2 runs as a server, so the three instances share one database, as they do in the JUnit stress suite.
+    SPRING_DATASOURCE_URL: jdbc:h2:tcp://h2:9092/mem:demo;DB_CLOSE_DELAY=-1
+    SPRING_DATASOURCE_USERNAME: sa
+    SPRING_SQL_INIT_MODE: always
+  healthcheck:
+    # The image has bash but no curl: ask /actuator/health over a plain TCP connection.
+    test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8080 && printf 'GET /actuator/health HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+    interval: 2s
+    timeout: 3s
+    retries: 60
+
+services:
+  redis:
+    image: redis:8.10.2
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+
+  h2:
+    build: .
+    image: demo-load-app
+    # The H2 TCP server, from the libraries of the app image. -ifNotExists lets the first instance create the database.
+    entrypoint: ["java", "-cp", "unpacked/lib/*", "org.h2.tools.Server", "-tcp", "-tcpAllowOthers", "-tcpPort", "9092", "-ifNotExists"]
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/9092"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+
+  app1:
+    <<: *app
+    ports:
+      - "127.0.0.1:18081:8080"
+
+  app2:
+    <<: *app
+    ports:
+      - "127.0.0.1:18082:8080"
+
+  app3:
+    <<: *app
+    ports:
+      - "127.0.0.1:18083:8080"

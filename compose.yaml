@@ -1,0 +1,8 @@
+# Started by Spring Boot when you run the app from this directory (spring-boot-docker-compose).
+services:
+  redis:
+    image: redis:8.10.2
+    ports:
+      # No host port given: Docker picks a free one on 127.0.0.1, so a Redis already on localhost:6379 is never
+      # touched and this one is not reachable from other machines.
+      - "127.0.0.1::6379"
